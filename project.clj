@@ -1,6 +1,9 @@
 (defproject jepsen.raftis "0.1.0-SNAPSHOT"
-  :description "FIXME: write description"
-  :url "http://example.com/FIXME"
+  :description "A Jepsen test for raftis"
+  :url "https://github.com/Qihoo360/floyd/tree/master/floyd/example/redis"
   :license {:name "Eclipse Public License"
             :url "http://www.eclipse.org/legal/epl-v10.html"}
-  :dependencies [[org.clojure/clojure "1.8.0"]])
+  :main jepsen.raftis
+  :dependencies [[org.clojure/clojure "1.8.0"]
+                 [jepsen "0.1.4"]
+                 [com.taoensso/carmine "2.16.0"]])
