@@ -10,6 +10,7 @@
                     [control :as c]
                     [db :as db]
                     [generator :as gen]
+                    [nemesis :as nemesis]
                     [tests :as tests]
                     [util :as util]]
             [jepsen.checker.timeline :as timeline]
@@ -58,15 +59,20 @@
          {:name "raftis"
           :db (db "v2.0.2")
           :client (client nil)
-          :model (model/cas-register)
+          :nemesis (nemesis/partition-random-halves)
+          :model (model/cas-register 0)
           :checker (checker/compose
                      {:perf     (checker/perf)
                       :timeline (timeline/html)
                       :linear   checker/linearizable})
           :generator (->> (gen/mix [r w])
-                          (gen/stagger 1/10)
-                          (gen/clients)
-                          (gen/time-limit 15))}
+                          (gen/stagger 1/30)
+                          (gen/nemesis
+                            (gen/seq (cycle [(gen/sleep 5)
+                                             {:type :info, :f :start}
+                                             (gen/sleep 5)
+                                             {:type :info, :f :stop}])))
+                          (gen/time-limit (:time-limit opts)))}
          opts))
 
 (defn -main
