@@ -12,7 +12,7 @@
                     [generator :as gen]
                     [nemesis :as nemesis]
                     [tests :as tests]
-                    [util :as util]]
+                    [util :as util :refer [timeout]]]
             [jepsen.checker.timeline :as timeline]
             [jepsen.control.util :as cu]))
 
@@ -29,27 +29,51 @@
   [conn]
   (reify client/Client
     (setup! [_ test node]
-      (def redis-conn {:pool {} :spec {:host node :port 6379}})
-                                       ; :password "71ad83e43c8252af"}})
+      (def redis-conn {:pool {} :spec {:host node :port 6379 :timeout-ms 5000}})
       (client redis-conn))
 
     (invoke! [this test op]
-      (case (:f op)
-        :read (assoc op :type :ok, :value (parse-long (get (car/wcar conn (car/get "r")) 0 "0")))
-        :write (do (car/wcar conn (car/set "r" (:value op)))
-                   (assoc op :type, :ok))))
+      (try
+        (case (:f op)
+          :read (assoc op :type :ok, :value (parse-long (get (car/wcar conn (car/get "r")) 0 "0")))
+
+          :write (do (car/wcar conn (car/set "r" (:value op)))
+                     (assoc op :type, :ok)))
+
+        (catch clojure.lang.ExceptionInfo e
+          (def err_str (str (.getMessage e)))
+          (def is_timeout (re-find #"ERR write Timeout:.*" err_str))
+          ; (def send_timeout (re-find #"ERR write Timeout: Send timeout" err_str))
+          (assoc op :type (if (not= is_timeout nil) :info :fail), :error err_str))
+
+        (catch java.net.SocketTimeoutException e
+          (assoc op :type (if (= :read (:f op)) :fail :info), :error :timeout))
+
+        (catch java.lang.NumberFormatException e
+          (assoc op :type :fail, :error :readnil))))
 
     (teardown! [_ test])))
+
+(def src_dir "/home/gaodunqiao/raftis")
+(def dir     "/opt/raftis")
+(def binary  "raftis")
 
 (defn db
   "Raftis DB for a particular version."
   [version]
   (reify db/DB
     (setup! [_ test node]
-      (info node "installing raftis" version))
+      (info node "installing raftis" version)
+      (c/su
+        (c/exec :start_raftis)
+        (println "Waiting 10 seconds for leader electing...")
+        (c/exec :sleep :10)))
 
     (teardown! [_ test node]
-      (info node "tearing down raftis"))))
+      (info node "tearing down raftis")
+      (c/su
+        (c/exec :stop_raftis)
+        (c/exec :clean_raftis)))))
 
 (defn raftis-test
   "Given an options map from the command line runner (e.g. :nodes, :ssh,
