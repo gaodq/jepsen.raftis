@@ -35,19 +35,23 @@
     (invoke! [this test op]
       (try
         (case (:f op)
-          :read (assoc op :type :ok, :value (parse-long (get (car/wcar conn (car/get "r")) 0 "0")))
+          :read (assoc op :type :ok, :value (parse-long (get (car/wcar conn (car/get "r")) 0 "")))
 
           :write (do (car/wcar conn (car/set "r" (:value op)))
                      (assoc op :type, :ok)))
 
         (catch clojure.lang.ExceptionInfo e
           (def err_str (str (.getMessage e)))
-          (def is_timeout (re-find #"ERR write Timeout:.*" err_str))
-          ; (def send_timeout (re-find #"ERR write Timeout: Send timeout" err_str))
-          (assoc op :type (if (not= is_timeout nil) :info :fail), :error err_str))
+          (def no_leader (re-find #"ERR write InComplete: no leader node!.*" err_str))
+          ; (def is_timeout (re-find #"ERR write Timeout:.*" err_str))
+          ; (assoc op :type (if (not= is_timeout nil) :info :fail), :error err_str))
+          (assoc op :type (if (or (= :read (:f op)) no_leader) :fail :info), :error err_str))
 
         (catch java.net.SocketTimeoutException e
           (assoc op :type (if (= :read (:f op)) :fail :info), :error :timeout))
+
+        (catch java.io.EOFException e
+          (assoc op :type :fail, :error :eof_exception))
 
         (catch java.lang.NumberFormatException e
           (assoc op :type :fail, :error :readnil))))
@@ -56,6 +60,7 @@
 
 (def src_dir "/home/gaodunqiao/raftis")
 (def dir     "/opt/raftis")
+(def logfile (str dir "/data/LOG"))
 (def binary  "raftis")
 
 (defn db
@@ -66,14 +71,17 @@
       (info node "installing raftis" version)
       (c/su
         (c/exec :start_raftis)
-        (println "Waiting 10 seconds for leader electing...")
-        (c/exec :sleep :10)))
+        (Thread/sleep 10000)))
 
     (teardown! [_ test node]
       (info node "tearing down raftis")
       (c/su
         (c/exec :stop_raftis)
-        (c/exec :clean_raftis)))))
+        (c/exec :clean_raftis)))
+
+    db/LogFiles
+    (log-files [_ test node]
+      [logfile])))
 
 (defn raftis-test
   "Given an options map from the command line runner (e.g. :nodes, :ssh,
@@ -84,13 +92,13 @@
           :db (db "v2.0.2")
           :client (client nil)
           :nemesis (nemesis/partition-random-halves)
-          :model (model/cas-register 0)
+          :model (model/register)
           :checker (checker/compose
                      {:perf     (checker/perf)
                       :timeline (timeline/html)
                       :linear   checker/linearizable})
           :generator (->> (gen/mix [r w])
-                          (gen/stagger 1/30)
+                          (gen/stagger 1/10)
                           (gen/nemesis
                             (gen/seq (cycle [(gen/sleep 5)
                                              {:type :info, :f :start}
