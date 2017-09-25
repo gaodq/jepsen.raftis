@@ -25,7 +25,7 @@
   (when s (Long/parseLong s)))
 
 (defn client
-  "A client for a single compare-and-set register"
+  "A client for a single register"
   [conn]
   (reify client/Client
     (setup! [_ test node]
@@ -43,9 +43,8 @@
         (catch clojure.lang.ExceptionInfo e
           (def err_str (str (.getMessage e)))
           (def no_leader (re-find #"ERR write InComplete: no leader node!.*" err_str))
-          ; (def is_timeout (re-find #"ERR write Timeout:.*" err_str))
-          ; (assoc op :type (if (not= is_timeout nil) :info :fail), :error err_str))
-          (assoc op :type (if (or (= :read (:f op)) no_leader) :fail :info), :error err_str))
+          (def socket_closed (re-find #"socket closed.*" err_str))
+          (assoc op :type (if (or (or (= :read (:f op)) no_leader) socket_closed) :fail :info), :error err_str))
 
         (catch java.net.SocketTimeoutException e
           (assoc op :type (if (= :read (:f op)) :fail :info), :error :timeout))
@@ -54,7 +53,7 @@
           (assoc op :type :fail, :error :eof_exception))
 
         (catch java.lang.NumberFormatException e
-          (assoc op :type :fail, :error :readnil))))
+          (assoc op :type :fail, :error (str "readnil--- " e)))))
 
     (teardown! [_ test])))
 
@@ -92,7 +91,7 @@
           :db (db "v2.0.2")
           :client (client nil)
           :nemesis (nemesis/partition-random-halves)
-          :model (model/register)
+          :model (model/register 0)
           :checker (checker/compose
                      {:perf     (checker/perf)
                       :timeline (timeline/html)
