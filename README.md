@@ -5,6 +5,7 @@ A Clojure library designed to test [Raftis](https://github.com/Qihoo360/floyd/tr
 ## What is Raftis
 
 Raftis = Raft + Redis protocol
+
 Raftis support redis's kv interface for now. We implement the redis protocol consistent system with Floyd, a library that could be easily embeded into users' application. Raftis is just like zookeeper, etcd.
 
 ## Usage
@@ -22,6 +23,7 @@ TODO: More flexible installing.
 ### Run Tests
 
 lein run test --help
+
 lein run test --time-limit 40 --concurrency 10 --test-count 10
 
 ## License
