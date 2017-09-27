@@ -29,8 +29,7 @@
   [conn]
   (reify client/Client
     (setup! [_ test node]
-      (def redis-conn {:pool {} :spec {:host node :port 6379 :timeout-ms 5000}})
-      (client redis-conn))
+      (client {:pool {} :spec {:host node :port 6379 :timeout-ms 5000}}))
 
     (invoke! [this test op]
       (try
@@ -41,10 +40,10 @@
                      (assoc op :type, :ok)))
 
         (catch clojure.lang.ExceptionInfo e
-          (def err_str (str (.getMessage e)))
-          (def no_leader (re-find #"ERR write InComplete: no leader node!.*" err_str))
-          (def socket_closed (re-find #"socket closed.*" err_str))
-          (assoc op :type (if (or (or (= :read (:f op)) no_leader) socket_closed) :fail :info), :error err_str))
+          (let [err_str (str (.getMessage e))]
+            (let [no_leader (re-find #"ERR write InComplete: no leader node!.*" err_str)]
+              (let [socket_closed (re-find #"socket closed.*" err_str)]
+                (assoc op :type (if (or (= :read (:f op)) no_leader socket_closed) :fail :info), :error err_str)))))
 
         (catch java.net.SocketTimeoutException e
           (assoc op :type (if (= :read (:f op)) :fail :info), :error :timeout))
